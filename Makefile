@@ -44,4 +44,4 @@ pub:
 
 .PHONY: fmt
 fmt:
-	gofmt -w $(NAME).go
+	$(GOFMT) -w $(NAME).go
