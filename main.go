@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/csv"
+	"fmt"
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
@@ -17,16 +18,15 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"fmt"
-	"time"
+	"strconv"
 	"strings"
+	"time"
 )
 
 var Version string
 
 const (
-	esIndex               = "elblog"
-	esType                = "elb"
+	esIndex = "elblog"
 )
 
 type ElbAccessLog struct {
@@ -35,13 +35,13 @@ type ElbAccessLog struct {
 	Elb                    string `json:"elb"`
 	ClientIpAddress        string `json:"client_ip_address"`
 	BackendIpAddress       string `json:"backend_ip_address"`
-	RequestProcessingTime  string `json:"request_processing_time"`
-	BackendProcessingTime  string `json:"backend_processing_time"`
-	ResponseProcessingTime string `json:"response_processing_time"`
-	ElbStatusCode          string `json:"elb_status_code"`
-	BackendStatusCode      string `json:"backend_status_code"`
-	ReceivedBytes          string `json:"received_bytes"`
-	SentBytes              string `json:"sent_bytes"`
+	RequestProcessingTime  int64  `json:"request_processing_time"`
+	BackendProcessingTime  int64  `json:"backend_processing_time"`
+	ResponseProcessingTime int64  `json:"response_processing_time"`
+	ElbStatusCode          int64  `json:"elb_status_code"`
+	BackendStatusCode      int64  `json:"backend_status_code"`
+	ReceivedBytes          int64  `json:"received_bytes"`
+	SentBytes              int64  `json:"sent_bytes"`
 	Request                string `json:"request"`
 	UserAgent              string `json:"user_agent"`
 	SslCipher              string `json:"ssl_cipher"`
@@ -98,12 +98,12 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			elastic.SetHttpClient(httpClient),
 		)
 		if err != nil {
-			log.Printf("elastic.NewClient err != nil %#v",err)
+			log.Printf("elastic.NewClient err != nil %#v", err)
 			panic(err)
 		}
 
 		// Create an index.
-		indexName := fmt.Sprintf("%s-%s",esIndex,time.Now().Format("2006-01-02"))
+		indexName := fmt.Sprintf("%s-%s", esIndex, time.Now().Format("2006-01-02"))
 		//indexName := esIndex
 
 		// Read the body of the S3 object.
@@ -146,7 +146,7 @@ func putDocumentIntoES(c *elastic.Client, indexName string, line string) error {
 		BodyJson(doc).
 		Do()
 	if err != nil {
-		log.Printf("c.Index err != nil %s",put1)
+		log.Printf("c.Index err != nil %s", put1)
 		panic(err)
 	}
 	//log.Printf("Indexed elb access log %s to index %s, type %s\n", put1.Id, put1.Index, put1.Type)
@@ -156,19 +156,28 @@ func putDocumentIntoES(c *elastic.Client, indexName string, line string) error {
 
 func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
 
+	var rb, sb, rqt, st, bst, bt, rst int64
+	rqt, _ = strconv.ParseInt(line[5], 10, 32)
+	bt, _ = strconv.ParseInt(line[6], 10, 32)
+	rst, _ = strconv.ParseInt(line[7], 10, 32)
+	st, _ = strconv.ParseInt(line[8], 10, 32)
+	bst, _ = strconv.ParseInt(line[9], 10, 32)
+	rb, _ = strconv.ParseInt(line[10], 10, 32)
+	sb, _ = strconv.ParseInt(line[11], 10, 32)
+
 	elb := &ElbAccessLog{
 		Protocol:               line[0],
 		Timestamp:              line[1],
 		Elb:                    line[2],
 		ClientIpAddress:        line[3],
 		BackendIpAddress:       line[4],
-		RequestProcessingTime:  line[5],
-		BackendProcessingTime:  line[6],
-		ResponseProcessingTime: line[7],
-		ElbStatusCode:          line[8],
-		BackendStatusCode:      line[9],
-		ReceivedBytes:          line[10],
-		SentBytes:              line[11],
+		RequestProcessingTime:  rqt,
+		BackendProcessingTime:  bt,
+		ResponseProcessingTime: rst,
+		ElbStatusCode:          st,
+		BackendStatusCode:      bst,
+		ReceivedBytes:          rb,
+		SentBytes:              sb,
 		Request:                line[12],
 		UserAgent:              line[13],
 		SslCipher:              line[14],
