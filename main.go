@@ -17,6 +17,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"fmt"
+	"time"
 	"strings"
 )
 
@@ -88,9 +90,10 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 		}
 
 		// Use the client with Olivere's elastic client
+		endpoint := fmt.Sprintf(os.Getenv("ES_ENDPOINT"))
 		client, err := elastic.NewClient(
 			elastic.SetSniff(false),
-			elastic.SetURL(os.Getenv("ES_ENDPOINT")),
+			elastic.SetURL(endpoint),
 			elastic.SetScheme("https"),
 			elastic.SetHttpClient(httpClient),
 		)
@@ -100,7 +103,8 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 		}
 
 		// Create an index.
-		indexName := esIndex
+		indexName := esIndex + "-" + time.Now().Format("2006-01-02")
+		//indexName := esIndex
 
 		// Read the body of the S3 object.
 		bytes, err := ioutil.ReadAll(log_data)
