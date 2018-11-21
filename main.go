@@ -27,6 +27,7 @@ var Version string
 
 const (
 	esIndex = "elblog"
+	esType  = "elb"
 )
 
 type ElbAccessLog struct {
