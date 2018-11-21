@@ -25,7 +25,7 @@ import (
 var Version string
 
 const (
-	esIndex               = "elblogidx"
+	esIndex               = "elblog"
 	esType                = "elb"
 )
 
@@ -98,12 +98,12 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			elastic.SetHttpClient(httpClient),
 		)
 		if err != nil {
-			log.Printf("elastic.NewClient err != nil")
+			log.Printf("elastic.NewClient err != nil %#v",err)
 			panic(err)
 		}
 
 		// Create an index.
-		indexName := esIndex + "-" + time.Now().Format("2006-01-02")
+		indexName := fmt.Sprintf("%s-%s",esIndex,time.Now().Format("2006-01-02"))
 		//indexName := esIndex
 
 		// Read the body of the S3 object.
