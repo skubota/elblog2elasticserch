@@ -9,14 +9,11 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/elasticsearchservice"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/edoardo849/apex-aws-signer"
-	"gopkg.in/olivere/elastic.v3"
+	"github.com/olivere/elastic"
 	"io"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -83,26 +80,6 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			log.Fatal(err)
 		}
 
-		// working with Elasticsearch
-		transport := signer.NewTransport(session.New(&aws.Config{Region: aws.String(rec.AWSRegion)}), elasticsearchservice.ServiceName)
-
-		httpClient := &http.Client{
-			Transport: transport,
-		}
-
-		// Use the client with Olivere's elastic client
-		endpoint := fmt.Sprintf(os.Getenv("ES_ENDPOINT"))
-		client, err := elastic.NewClient(
-			elastic.SetSniff(false),
-			elastic.SetURL(endpoint),
-			elastic.SetScheme("https"),
-			elastic.SetHttpClient(httpClient),
-		)
-		if err != nil {
-			log.Printf("elastic.NewClient err != nil %#v", err)
-			panic(err)
-		}
-
 		// Create an index.
 		indexName := fmt.Sprintf("%s-%s", esIndex, time.Now().Format("2006-01-02"))
 		//indexName := esIndex
@@ -117,7 +94,7 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 		lines := 0
 		for _, line := range strings.Split(string(bytes), "\n") {
 			if len(line) != 0 {
-				putDocumentIntoES(client, indexName, line)
+				putDocumentIntoES(indexName, line)
 				lines++
 			}
 		}
@@ -127,8 +104,7 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 }
 
 // Index a recode of the S3 object, which is a single HTTP access log record.
-func putDocumentIntoES(c *elastic.Client, indexName string, line string) error {
-	//log.Printf("line: %s\n", line)
+func putDocumentIntoES(indexName string, line string) error {
 
 	r := csv.NewReader(strings.NewReader(line))
 	r.Comma = ' ' // space
@@ -141,22 +117,25 @@ func putDocumentIntoES(c *elastic.Client, indexName string, line string) error {
 		return nil
 	}
 
-	put1, err := c.Index().
+	ctxb := context.Background()
+
+	bulk := connectToElastic().
+		Bulk().
 		Index(indexName).
-		Type(esType).
-		BodyJson(doc).
-		Do()
-	if err != nil {
-		log.Printf("c.Index err != nil %s", put1)
-		panic(err)
+		Type(esType)
+
+	bulk.Add(elastic.NewBulkIndexRequest().Doc(doc))
+
+	if _, err := bulk.Do(ctxb); err != nil {
+		log.Println(err)
 	}
-	//log.Printf("Indexed elb access log %s to index %s, type %s\n", put1.Id, put1.Index, put1.Type)
 
 	return nil
 }
 
 func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
 
+	// https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-access-logs.html
 	var rb, sb, rqt, st, bst, bt, rst int64
 	rqt, _ = strconv.ParseInt(line[5], 10, 32)
 	bt, _ = strconv.ParseInt(line[6], 10, 32)
@@ -193,6 +172,22 @@ func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
 		RedirectUrl:            line[23],
 	}
 	return elb, nil
+}
+
+func connectToElastic() *elastic.Client {
+	endpoint := fmt.Sprintf(os.Getenv("ES_ENDPOINT"))
+	elasticClient, err := elastic.NewClient(
+		elastic.SetURL(endpoint),
+		elastic.SetSniff(false),
+	)
+	if err != nil {
+		log.Println(err)
+		time.Sleep(3 * time.Second)
+
+	} else {
+		return elasticClient
+	}
+	return nil
 }
 
 func main() {
