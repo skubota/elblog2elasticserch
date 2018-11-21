@@ -13,6 +13,13 @@ step
 	2. build elastic search service
 	3. set vpc endpoint for S3
 	4. create lambda function
-	5. set env and timeout for lambda function
+	5. set env(ES_ENDPOINT) and timeout for lambda function
 	6. create or assign role for lambda
 	7. make and upload function code
+
+usage
+
+	$ vi Makefile
+	$ make dep
+	$ make
+	$ make pub
