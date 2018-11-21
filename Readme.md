@@ -20,6 +20,6 @@ step
 usage
 
 	$ vi Makefile
-	$ make dep
+	$ make deps
 	$ make
 	$ make pub
