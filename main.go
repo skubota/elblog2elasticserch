@@ -63,7 +63,7 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 	for _, rec := range event.Records {
 		// S3 session
 		svc := s3.New(session.New(&aws.Config{Region: aws.String(rec.AWSRegion)}))
-		log.Printf("[%s - %s] Bucket = %s, Key = %s \n", rec.EventSource, rec.EventTime, rec.S3.Bucket.Name, rec.S3.Object.Key)
+		//log.Printf("[%s - %s] Bucket = %s, Key = %s \n", rec.EventSource, rec.EventTime, rec.S3.Bucket.Name, rec.S3.Object.Key)
 		// get the S3 object, i.e. file content
 		s3out, err := svc.GetObject(&s3.GetObjectInput{
 			Bucket: aws.String(rec.S3.Bucket.Name),
@@ -91,45 +91,35 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			log.Fatal(err)
 		}
 
+		ctxb := context.Background()
+		bulk := connectToElastic().
+			Bulk().
+			Index(indexName).
+			Type(esType)
+
 		lines := 0
 		for _, line := range strings.Split(string(bytes), "\n") {
 			if len(line) != 0 {
-				putDocumentIntoES(indexName, line)
+				r := csv.NewReader(strings.NewReader(line))
+				r.Comma = ' ' // space
+				fields, err := r.Read()
+
+				doc, err := arrayToElbAccessLog(fields)
+				if err != nil {
+					log.Printf("arrayToElbAccessLog err != nil")
+					log.Fatal(err)
+					return nil
+				}
+				bulk.Add(elastic.NewBulkIndexRequest().Doc(doc))
 				lines++
 			}
 		}
+		if _, err := bulk.Do(ctxb); err != nil {
+			log.Println(err)
+		}
+
 		log.Printf("read line: %d\n", lines)
 	}
-	return nil
-}
-
-// Index a recode of the S3 object, which is a single HTTP access log record.
-func putDocumentIntoES(indexName string, line string) error {
-
-	r := csv.NewReader(strings.NewReader(line))
-	r.Comma = ' ' // space
-	fields, err := r.Read()
-
-	doc, err := arrayToElbAccessLog(fields)
-	if err != nil {
-		log.Printf("arrayToElbAccessLog err != nil")
-		log.Fatal(err)
-		return nil
-	}
-
-	ctxb := context.Background()
-
-	bulk := connectToElastic().
-		Bulk().
-		Index(indexName).
-		Type(esType)
-
-	bulk.Add(elastic.NewBulkIndexRequest().Doc(doc))
-
-	if _, err := bulk.Do(ctxb); err != nil {
-		log.Println(err)
-	}
-
 	return nil
 }
 
@@ -176,16 +166,19 @@ func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
 
 func connectToElastic() *elastic.Client {
 	endpoint := fmt.Sprintf(os.Getenv("ES_ENDPOINT"))
-	elasticClient, err := elastic.NewClient(
-		elastic.SetURL(endpoint),
-		elastic.SetSniff(false),
-	)
-	if err != nil {
-		log.Println(err)
-		time.Sleep(3 * time.Second)
+	//log.Printf("set endpoint: %s", endpoint)
+	for i := 0; i < 3; i++ {
+		elasticClient, err := elastic.NewClient(
+			elastic.SetURL(endpoint),
+			elastic.SetSniff(false),
+		)
+		if err != nil {
+			log.Printf("elastic.NewClient err != nil %s", err)
+			time.Sleep(3 * time.Second)
 
-	} else {
-		return elasticClient
+		} else {
+			return elasticClient
+		}
 	}
 	return nil
 }
