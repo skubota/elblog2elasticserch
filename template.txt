@@ -1,0 +1,44 @@
+PUT /_template/elblog
+{
+    "order" : 1,
+    "index_patterns" : [
+      "elblog-*"
+    ],
+    "settings" : {
+      "index" : {
+        "mapping" : {
+          "total_fields" : {
+            "limit" : "10000"
+          }
+        },
+        "refresh_interval" : "5s",
+        "number_of_routing_shards" : "30",
+        "number_of_shards" : "3",
+        "number_of_replicas" : "0"
+      }
+    },
+    "mappings" : {
+      "elb" : {
+        "properties" : {
+          "client_ip_address" : {
+            "type" : "ip",
+            "fields" : {
+              "keyword" : {
+                "type" : "ip"
+              }
+            }
+          },
+          "backend_ip_address" : {
+            "type" : "ip",
+            "fields" : {
+              "keyword" : {
+                "type" : "ip"
+              }
+            }
+          }
+        }
+      }
+    },
+    "aliases" : {
+    }
+}
