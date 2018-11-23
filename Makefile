@@ -25,8 +25,7 @@ install: pub
 .PHONY: deps
 deps:
 	$(GOGET) github.com/aws/aws-sdk-go
-	$(GOGET) gopkg.in/olivere/elastic.v3
-	$(GOGET) github.com/edoardo849/apex-aws-signer
+	$(GOGET) gopkg.in/olivere/elastic
 
 .PHONY: build
 build:
