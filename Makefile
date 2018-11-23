@@ -19,13 +19,15 @@ GOGET=$(GOCMD) get
 VERSION := 0.1
 MINVER  :=$(shell date -u +.%Y%m%d)
 
-all: clean fmt build
+all: deps clean fmt build
 install: pub
 
 .PHONY: deps
 deps:
+	$(GOGET) github.com/aws/aws-lambda-go/lambda
+	$(GOGET) github.com/aws/aws-lambda-go/events
 	$(GOGET) github.com/aws/aws-sdk-go
-	$(GOGET) gopkg.in/olivere/elastic
+	$(GOGET) github.com/olivere/elastic
 
 .PHONY: build
 build:
