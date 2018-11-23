@@ -19,7 +19,8 @@ GOGET=$(GOCMD) get
 VERSION := 0.1
 MINVER  :=$(shell date -u +.%Y%m%d)
 
-all: build
+all: clean fmt build
+install: pub
 
 .PHONY: deps
 deps:
@@ -44,4 +45,4 @@ pub:
 
 .PHONY: fmt
 fmt:
-	$(GOFMT) -w $(NAME).go
+	gofmt -w $(NAME).go

@@ -98,6 +98,11 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			Index(indexName).
 			Type(esType)
 
+		if bulk == nil {
+			log.Printf("connectToElastic err == nil")
+			log.Fatal(err)
+		}
+
 		lines := 0
 		for _, line := range strings.Split(string(bytes), "\n") {
 			if len(line) != 0 {
@@ -180,8 +185,7 @@ func connectToElastic() *elastic.Client {
 		)
 		if err != nil {
 			log.Printf("elastic.NewClient err != nil %s", err)
-			time.Sleep(3 * time.Second)
-
+			//time.Sleep(3 * time.Second)
 		} else {
 			return elasticClient
 		}
@@ -195,21 +199,26 @@ func split_aplusp(aplusp string) (string, int64) {
 	c := strings.Count(aplusp, ":")
 	addr := strings.Split(aplusp, ":")
 
-	port, _ = strconv.ParseInt(addr[len(addr)-1], 10, 32)
-	if c == 1 {
+	if c == 0 {
+		return aplusp, 0
+	} else if c == 1 {
 		// ipv4
 		ip = addr[0]
+		port, _ = strconv.ParseInt(addr[1], 10, 32)
 	} else {
 		// ipv6
-		addr = pop(addr)
+		var port_str string
+		port_str, addr = pop(addr)
 		ip = strings.Join(addr, ":")
+		port, _ = strconv.ParseInt(port_str, 10, 32)
 	}
 	return ip, port
 }
 
-func pop(slice []string) []string {
+func pop(slice []string) (string, []string) {
+	last := slice[len(slice)-1]
 	slice = slice[:len(slice)-1]
-	return slice
+	return last, slice
 }
 
 func main() {
