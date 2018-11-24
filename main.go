@@ -20,6 +20,7 @@ import (
 	"time"
 )
 
+// define
 var Version string
 
 const (
@@ -27,6 +28,7 @@ const (
 	esType  = "elb"
 )
 
+// log structure
 type ElbAccessLog struct {
 	Protocol               string  `json:"protocol"`
 	Timestamp              string  `json:"timestamp"`
@@ -56,10 +58,21 @@ type ElbAccessLog struct {
 	RedirectUrl            string  `json:"redirect_url"`
 }
 
+// generic function
+
+// gzip extractor
 func extract(zr io.Reader) (io.Reader, error) {
 	return gzip.NewReader(zr)
 }
 
+// slice popper
+func slice_pop(slice []string) (string, []string) {
+	last := slice[len(slice)-1]
+	slice = slice[:len(slice)-1]
+	return last, slice
+}
+
+// lamda handle function
 func HandleRequest(ctx context.Context, event events.S3Event) error {
 	// Iterate all the S3 events, while extracting S3 bucket and filename.
 	for _, rec := range event.Records {
@@ -129,6 +142,7 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 	return nil
 }
 
+// elb log line array to struct
 func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
 
 	// https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-access-logs.html
@@ -176,6 +190,7 @@ func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
 	return elb, nil
 }
 
+// connect ESS
 func connectToElastic() *elastic.Client {
 	endpoint := fmt.Sprintf(os.Getenv("ES_ENDPOINT"))
 	for i := 0; i < 3; i++ {
@@ -193,6 +208,7 @@ func connectToElastic() *elastic.Client {
 	return nil
 }
 
+// address + poer splitter
 func split_aplusp(aplusp string) (string, int64) {
 	var ip string
 	var port int64
@@ -208,19 +224,16 @@ func split_aplusp(aplusp string) (string, int64) {
 	} else {
 		// ipv6
 		var port_str string
-		port_str, addr = pop(addr)
+		port_str, addr = slice_pop(addr)
 		ip = strings.Join(addr, ":")
 		port, _ = strconv.ParseInt(port_str, 10, 32)
 	}
 	return ip, port
 }
 
-func pop(slice []string) (string, []string) {
-	last := slice[len(slice)-1]
-	slice = slice[:len(slice)-1]
-	return last, slice
-}
-
+// main
 func main() {
 	lambda.Start(HandleRequest)
 }
+
+// EoF
