@@ -75,6 +75,7 @@ func slice_pop(slice []string) (string, []string) {
 // lamda handle function
 func HandleRequest(ctx context.Context, event events.S3Event) error {
 	// Iterate all the S3 events, while extracting S3 bucket and filename.
+	log.Printf("Info: start HandleRequest %s", Version)
 	for _, rec := range event.Records {
 		// S3 session
 		svc := s3.New(session.New(&aws.Config{Region: aws.String(rec.AWSRegion)}))
@@ -85,13 +86,13 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			Key:    aws.String(rec.S3.Object.Key),
 		})
 		if err != nil {
-			log.Printf("svc.GetObject err != nil")
+			log.Printf("Error: HandleRequest() svc.GetObject %s", err)
 			log.Fatal(err)
 		}
 		// extract
 		log_data, err := extract(s3out.Body)
 		if err != nil {
-			log.Printf("extract err != nil %s %s", os.Stderr, err)
+			log.Printf("Error: HandleRequest() extract %s %s", os.Stderr, err)
 			log.Fatal(err)
 		}
 
@@ -101,7 +102,7 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 		// Read the body of the S3 object.
 		bytes, err := ioutil.ReadAll(log_data)
 		if err != nil {
-			log.Printf("ioutil.ReadAll err != nil")
+			log.Printf("Error: HandleRequest() ioutil.ReadAll %s", err)
 			log.Fatal(err)
 		}
 
@@ -112,7 +113,7 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			Type(esType)
 
 		if bulk == nil {
-			log.Printf("connectToElastic err == nil")
+			log.Printf("Error: HandleRequest() connectToElastic")
 			log.Fatal(err)
 		}
 
@@ -125,7 +126,7 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 
 				doc, err := arrayToElbAccessLog(fields)
 				if err != nil {
-					log.Printf("arrayToElbAccessLog err != nil")
+					log.Printf("Error: HandleRequest() arrayToElbAccessLog %s", err)
 					log.Fatal(err)
 					return nil
 				}
@@ -134,10 +135,10 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			}
 		}
 		if _, err := bulk.Do(ctxb); err != nil {
-			log.Println(err)
+			log.Printf("Error: HandleRequest() bulk.Do %s", err)
 		}
 
-		log.Printf("read line: %d\n", lines)
+		log.Printf("Info: read line: %d\n", lines)
 	}
 	return nil
 }
@@ -203,7 +204,7 @@ func connectToElastic() *elastic.Client {
 			elastic.SetSniff(false),
 		)
 		if err != nil {
-			log.Printf("elastic.NewClient err != nil %s", err)
+			log.Printf("Error: connectToElastic() elastic.NewClient %s", err)
 			//time.Sleep(3 * time.Second)
 		} else {
 			return elasticClient
