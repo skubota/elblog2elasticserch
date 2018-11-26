@@ -49,7 +49,7 @@ type ElbAccessLog struct {
 	SslCipher              string  `json:"ssl_cipher"`
 	SslProcotol            string  `json:"ssl_protocol"`
 	TargetGrpArn           string  `json:"target_group_arn"`
-	TraceID                string  `json:"trace_id"`
+	TraceId                string  `json:"trace_id"`
 	DomainName             string  `json:"domain_name"`
 	CertArn                string  `json:"chosen_cert_arn"`
 	RulePriority           string  `json:"matched_rule_priority"`
@@ -146,40 +146,44 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
 
 	// https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-access-logs.html
-	var rqt, bt, rst float64
-	var st, bst, rb, sb, cpo, bpo int64
-	var cip, bip string
-	rqt, _ = strconv.ParseFloat(line[5], 64)
-	bt, _ = strconv.ParseFloat(line[6], 64)
-	rst, _ = strconv.ParseFloat(line[7], 64)
-	st, _ = strconv.ParseInt(line[8], 10, 32)
-	bst, _ = strconv.ParseInt(line[9], 10, 32)
-	rb, _ = strconv.ParseInt(line[10], 10, 32)
-	sb, _ = strconv.ParseInt(line[11], 10, 32)
-	cip, cpo = split_aplusp(line[3])
-	bip, bpo = split_aplusp(line[4])
+	var client_ip, backend_ip string
+	var client_port, backend_port int64
+	var status_code, backend_status_code, recv_bytes, send_bytes int64
+	var req_time, backend_time, responce_time float64
+
+	client_ip, client_port = split_aplusp(line[3])
+	backend_ip, backend_port = split_aplusp(line[4])
+
+	status_code, _ = strconv.ParseInt(line[8], 10, 32)
+	backend_status_code, _ = strconv.ParseInt(line[9], 10, 32)
+	recv_bytes, _ = strconv.ParseInt(line[10], 10, 32)
+	send_bytes, _ = strconv.ParseInt(line[11], 10, 32)
+
+	req_time, _ = strconv.ParseFloat(line[5], 64)
+	backend_time, _ = strconv.ParseFloat(line[6], 64)
+	responce_time, _ = strconv.ParseFloat(line[7], 64)
 
 	elb := &ElbAccessLog{
 		Protocol:               line[0],
 		Timestamp:              line[1],
 		Elb:                    line[2],
-		ClientIpAddress:        cip,
-		ClientSourcePort:       cpo,
-		BackendIpAddress:       bip,
-		BackendDstPort:         bpo,
-		RequestProcessingTime:  rqt,
-		BackendProcessingTime:  bt,
-		ResponseProcessingTime: rst,
-		ElbStatusCode:          st,
-		BackendStatusCode:      bst,
-		ReceivedBytes:          rb,
-		SentBytes:              sb,
+		ClientIpAddress:        client_ip,
+		ClientSourcePort:       client_port,
+		BackendIpAddress:       backend_ip,
+		BackendDstPort:         backend_port,
+		RequestProcessingTime:  req_time,
+		BackendProcessingTime:  backend_time,
+		ResponseProcessingTime: responce_time,
+		ElbStatusCode:          status_code,
+		BackendStatusCode:      backend_status_code,
+		ReceivedBytes:          recv_bytes,
+		SentBytes:              send_bytes,
 		Request:                line[12],
 		UserAgent:              line[13],
 		SslCipher:              line[14],
 		SslProcotol:            line[15],
 		TargetGrpArn:           line[16],
-		TraceID:                line[17],
+		TraceId:                line[17],
 		DomainName:             line[18],
 		CertArn:                line[19],
 		RulePriority:           line[20],
