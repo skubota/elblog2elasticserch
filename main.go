@@ -116,7 +116,6 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 		tr_key := fmt.Sprintf(os.Getenv("TR_Key"))
 		if len(tr_bucket) > 0 && len(tr_key) > 0 {
 			trx = read_translate_csv(tr_bucket, tr_key)
-			log.Printf("Info: read translate csv: %d\n", len(trx))
 		}
 
 		ctxb := context.Background()
@@ -148,7 +147,7 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			log.Fatalf("Error: HandleRequest() bulk.Do %s", err)
 		}
 
-		log.Printf("Info: read line: %d\n", lines)
+		log.Printf("Info: HandleRequest() read elblog line: %d\n", lines)
 	}
 	return nil
 }
@@ -241,7 +240,7 @@ func translate(from string, tr_map map[string]string) string {
 			return v
 		}
 	}
-	return ""
+	return "-,-,-,-,-,-"
 }
 
 // read translate csv
@@ -257,7 +256,13 @@ func read_translate_csv(bucket, key string) map[string]string {
 	if err != nil {
 		log.Printf("Warn: read_translate_csv() svc.GetObject %s", err)
 	}
-	bytes, err := ioutil.ReadAll(s3out.Body)
+	// extract
+	data, err := extract(s3out.Body)
+	if err != nil {
+		log.Fatalf("Error: read_translate_csv() extract %s %s", os.Stderr, err)
+	}
+
+	bytes, err := ioutil.ReadAll(data)
 	if err != nil {
 		log.Printf("Warn: read_translate_csv() ioutil.ReadAll %s", err)
 	}
@@ -276,7 +281,7 @@ func read_translate_csv(bucket, key string) map[string]string {
 			lines++
 		}
 	}
-	log.Printf("Info: read_translate_csv() read line: %d", lines)
+	log.Printf("Info: read_translate_csv() read translate_csv line: %d", lines)
 
 	return tr_map
 }
