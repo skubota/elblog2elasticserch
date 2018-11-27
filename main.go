@@ -14,6 +14,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -56,6 +57,11 @@ type ElbAccessLog struct {
 	RequestCreationTime    string  `json:"request_creation_time"`
 	ActionsExecuted        string  `json:"actions_executed"`
 	RedirectUrl            string  `json:"redirect_url"`
+	Custom1                string  `json:"custom1"`
+	Custom2                string  `json:"custom2"`
+	Custom3                string  `json:"custom3"`
+	Custom4                string  `json:"custom4"`
+	Custom5                string  `json:"custom5"`
 }
 
 // generic function
@@ -86,14 +92,12 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			Key:    aws.String(rec.S3.Object.Key),
 		})
 		if err != nil {
-			log.Printf("Error: HandleRequest() svc.GetObject %s", err)
-			log.Fatal(err)
+			log.Fatalf("Error: HandleRequest() svc.GetObject %s", err)
 		}
 		// extract
 		log_data, err := extract(s3out.Body)
 		if err != nil {
-			log.Printf("Error: HandleRequest() extract %s %s", os.Stderr, err)
-			log.Fatal(err)
+			log.Fatalf("Error: HandleRequest() extract %s %s", os.Stderr, err)
 		}
 
 		// Create an index.
@@ -102,8 +106,17 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 		// Read the body of the S3 object.
 		bytes, err := ioutil.ReadAll(log_data)
 		if err != nil {
-			log.Printf("Error: HandleRequest() ioutil.ReadAll %s", err)
-			log.Fatal(err)
+			log.Fatalf("Error: HandleRequest() ioutil.ReadAll %s", err)
+		}
+
+		var trx = make(map[string]string)
+
+		// translater
+		tr_bucket := fmt.Sprintf(os.Getenv("TR_Bucket"))
+		tr_key := fmt.Sprintf(os.Getenv("TR_Key"))
+		if len(tr_bucket) > 0 && len(tr_key) > 0 {
+			trx = read_translate_csv(tr_bucket, tr_key)
+			log.Printf("Info: read translate csv: %d\n", len(trx))
 		}
 
 		ctxb := context.Background()
@@ -113,8 +126,7 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 			Type(esType)
 
 		if bulk == nil {
-			log.Printf("Error: HandleRequest() connectToElastic")
-			log.Fatal(err)
+			log.Fatalf("Error: HandleRequest() connectToElastic %s", err)
 		}
 
 		lines := 0
@@ -124,18 +136,16 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 				r.Comma = ' ' // space
 				fields, err := r.Read()
 
-				doc, err := arrayToElbAccessLog(fields)
+				doc, err := arrayToElbAccessLog(fields, trx)
 				if err != nil {
-					log.Printf("Error: HandleRequest() arrayToElbAccessLog %s", err)
-					log.Fatal(err)
-					return nil
+					log.Printf("Warn: HandleRequest() arrayToElbAccessLog %s", err)
 				}
 				bulk.Add(elastic.NewBulkIndexRequest().Doc(doc))
 				lines++
 			}
 		}
 		if _, err := bulk.Do(ctxb); err != nil {
-			log.Printf("Error: HandleRequest() bulk.Do %s", err)
+			log.Fatalf("Error: HandleRequest() bulk.Do %s", err)
 		}
 
 		log.Printf("Info: read line: %d\n", lines)
@@ -144,7 +154,7 @@ func HandleRequest(ctx context.Context, event events.S3Event) error {
 }
 
 // elb log line array to struct
-func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
+func arrayToElbAccessLog(line []string, tr_map map[string]string) (*ElbAccessLog, error) {
 
 	// https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-access-logs.html
 	var client_ip, backend_ip string
@@ -163,6 +173,8 @@ func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
 	req_time, _ = strconv.ParseFloat(line[5], 64)
 	backend_time, _ = strconv.ParseFloat(line[6], 64)
 	responce_time, _ = strconv.ParseFloat(line[7], 64)
+
+	customs := strings.Split(translate(client_ip, tr_map), ",")
 
 	elb := &ElbAccessLog{
 		Protocol:               line[0],
@@ -191,6 +203,11 @@ func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
 		RequestCreationTime:    line[21],
 		ActionsExecuted:        line[22],
 		RedirectUrl:            line[23],
+		Custom1:                customs[0],
+		Custom2:                customs[1],
+		Custom3:                customs[2],
+		Custom4:                customs[3],
+		Custom5:                customs[4],
 	}
 	return elb, nil
 }
@@ -198,19 +215,70 @@ func arrayToElbAccessLog(line []string) (*ElbAccessLog, error) {
 // connect ESS
 func connectToElastic() *elastic.Client {
 	endpoint := fmt.Sprintf(os.Getenv("ES_ENDPOINT"))
-	for i := 0; i < 3; i++ {
-		elasticClient, err := elastic.NewClient(
-			elastic.SetURL(endpoint),
-			elastic.SetSniff(false),
-		)
-		if err != nil {
-			log.Printf("Error: connectToElastic() elastic.NewClient %s", err)
-			//time.Sleep(3 * time.Second)
-		} else {
-			return elasticClient
+	if len(endpoint) > 0 {
+		for i := 0; i < 3; i++ {
+			elasticClient, err := elastic.NewClient(
+				elastic.SetURL(endpoint),
+				elastic.SetSniff(false),
+			)
+			if err != nil {
+				log.Fatalf("Error: connectToElastic() elastic.NewClient %s", err)
+				//time.Sleep(3 * time.Second)
+			} else {
+				return elasticClient
+			}
 		}
 	}
 	return nil
+}
+
+// translate
+func translate(from string, tr_map map[string]string) string {
+	ip := net.ParseIP(from)
+	for k, v := range tr_map {
+		_, subnet, _ := net.ParseCIDR(k)
+		if subnet.Contains(ip) {
+			return v
+		}
+	}
+	return ""
+}
+
+// read translate csv
+func read_translate_csv(bucket, key string) map[string]string {
+	tr_map := make(map[string]string)
+
+	// s3
+	svc := s3.New(session.New())
+	s3out, err := svc.GetObject(&s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		log.Printf("Warn: read_translate_csv() svc.GetObject %s", err)
+	}
+	bytes, err := ioutil.ReadAll(s3out.Body)
+	if err != nil {
+		log.Printf("Warn: read_translate_csv() ioutil.ReadAll %s", err)
+	}
+
+	lines := 0
+	for _, line := range strings.Split(string(bytes), "\n") {
+		if len(line) != 0 {
+			r := csv.NewReader(strings.NewReader(line))
+			r.Comma = ','
+			fields, err := r.Read()
+			if err != nil {
+				log.Printf("Warn: read_translate_csv() csv.NewReader Read %s", err)
+			}
+			// 2001:db8:/32:,"test1,test2,test3"
+			tr_map[fields[0]] = fields[1]
+			lines++
+		}
+	}
+	log.Printf("Info: read_translate_csv() read line: %d", lines)
+
+	return tr_map
 }
 
 // address + poer splitter
